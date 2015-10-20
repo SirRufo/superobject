@@ -768,14 +768,16 @@ type
     property Name: string read FName;
   end;
 
+  SOOptional = class(TCustomAttribute);
+
   SOName = class(TSuperAttribute);
   SODefault = class(TSuperAttribute);
-
 
   TSuperRttiContext = class
   private
     class function GetFieldName(r: TRttiField): string;
     class function GetFieldDefault(r: TRttiField; const obj: ISuperObject): ISuperObject;
+    class function IsFieldOptional(r:TRttiField): Boolean;
   public
     Context: TRttiContext;
     SerialFromJson: TDictionary<PTypeInfo, TSerialFromJson>;
@@ -5909,6 +5911,16 @@ begin
   Result := obj;
 end;
 
+class function TSuperRttiContext.IsFieldOptional(r:TRttiField): Boolean;
+var
+  o: TCustomAttribute;
+begin
+  for o in r.GetAttributes do
+    if o is SOOptional then
+      Exit(True);
+  Result := False;
+end;
+
 function TSuperRttiContext.AsType<T>(const obj: ISuperObject): T;
 var
   ret: TValue;
@@ -6406,6 +6418,7 @@ function TSuperRttiContext.ToJson(var value: TValue; const index: ISuperObject):
     o: ISuperObject;
     f: TRttiField;
     v: TValue;
+    vso: ISuperObject;
   begin
     if TValueData(Value).FAsObject <> nil then
     begin
@@ -6418,7 +6431,10 @@ function TSuperRttiContext.ToJson(var value: TValue; const index: ISuperObject):
           if f.FieldType <> nil then
           begin
             v := f.GetValue(Value.AsObject);
-            Result.AsObject[GetFieldName(f)] := ToJson(v, index);
+            vso := ToJson(v, index);
+            if not ( vso = nil ) or not TSuperRttiContext.IsFieldOptional( f ) then
+              Result.AsObject[GetFieldName(f)] := vso;
+            vso := nil;
           end
       end else
         Result := o;
@@ -6440,6 +6456,7 @@ function TSuperRttiContext.ToJson(var value: TValue; const index: ISuperObject):
   var
     f: TRttiField;
     v: TValue;
+    vso: ISuperObject;
   begin
     Result := TSuperObject.Create(stObject);
     for f in Context.GetType(Value.TypeInfo).GetFields do
@@ -6449,7 +6466,10 @@ function TSuperRttiContext.ToJson(var value: TValue; const index: ISuperObject):
 {$ELSE}
       v := f.GetValue(TValueData(Value).FValueData.GetReferenceToRawData);
 {$ENDIF}
-      Result.AsObject[GetFieldName(f)] := ToJson(v, index);
+      vso := ToJson(v,index);
+      if not ( vso = nil ) or not TSuperRttiContext.IsFieldOptional( f ) then
+        Result.AsObject[GetFieldName(f)] := vso;
+      vso := nil;
     end;
   end;
 
